@@ -1,12 +1,21 @@
-# Pruebas de carga de una API REST con Locust
+# Pruebas de carga y monitorización de una tienda online
 
-Diseño y ejecución de **pruebas de carga** sobre la API REST de una tienda online (catálogo de pósters, carrito, pedidos y usuarios) usando **[Locust](https://locust.io/)** en Python. Las métricas de rendimiento se analizaron con **Grafana**.
+Desarrollo de una tienda online con API REST (**Flask + MariaDB**), **pruebas de carga con [Locust](https://locust.io/)** y **monitorización del servidor con Grafana** para encontrar el punto de saturación del sistema.
 
-> Práctica de la asignatura *Evaluación de Sistemas Informáticos* (3º Grado en Ingeniería Informática, Universidad de Valladolid, curso 2024-25).
+📄 **[Informe completo (PDF, 50 págs.)](Informe_Pruebas_Carga.pdf)**: implementación de la API, script de Locust, dashboards de Grafana y análisis de cada prueba.
 
-## Qué simula
+> Práctica de la asignatura *Evaluación de Sistemas Informáticos* (3º Grado en Ingeniería Informática, Universidad de Valladolid, junio de 2025).
 
-`locustfile.py` define un usuario virtual (`WebStoreUser`) que inicia sesión y ejecuta tareas **ponderadas** que reproducen un uso realista de la tienda:
+![Dashboard de Grafana durante la prueba de 100 usuarios](img/grafana-dashboard.png)
+
+## Qué se hizo
+
+1. **Aplicación "Arte Visual"**: tienda de pósters en Flask con API RESTful para autenticación (contraseñas con *hash*), catálogo, carrito y pedidos, sobre MariaDB.
+2. **Script de Locust** (`locustfile.py`): usuarios virtuales que inician sesión y ejecutan tareas **ponderadas** que imitan un uso real de la tienda.
+3. **Dashboard de Grafana** con métricas del servidor (CPU, memoria, E/S de disco, red, procesos, conexiones) y métricas de negocio sacadas de la base de datos (pedidos y usuarios registrados).
+4. **6 escenarios de carga creciente**, de 10 a 200 usuarios concurrentes, analizando juntos los datos de Locust y los de Grafana.
+
+### Tareas simuladas
 
 | Endpoint | Método | Peso | Descripción |
 |---|---|---|---|
@@ -18,29 +27,30 @@ Diseño y ejecución de **pruebas de carga** sobre la API REST de una tienda onl
 | `/api/productos/{id}` | PATCH / PUT | 2 / 1 | Actualización parcial / completa de productos |
 | `/api/pedidos/{id}` | GET | 2 | Detalle de un pedido creado por el propio usuario |
 | `/api/checkout` | POST | 1 | Compra, validando la respuesta y guardando el `order_id` |
-| `/api/registro`, `/api/carrito/vaciar` | POST / DELETE | 1 | Alta de usuarios nuevos y vaciado del carrito |
-
-Se usan `catch_response` para validar respuestas a nivel de negocio y nombres agrupados (`/api/productos/[idurl]`) para que las estadísticas no se dispersen por URL.
+| `/api/registro`, `/api/carrito/vaciar` | POST / DELETE | 1 | Alta de usuarios y vaciado del carrito |
 
 ## Resultados
 
-Escenarios ejecutados con carga creciente (usuarios concurrentes / tasa de llegada / duración). Datos completos en [`resultados/`](resultados/).
+Datos de Locust de cada escenario (usuarios concurrentes / tasa de llegada / duración). Los CSV completos están en [`resultados/`](resultados/).
 
 | Usuarios | Llegada | Duración | Peticiones | Peticiones/s | Mediana (ms) | P95 (ms) | Errores |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 10 | 2/s | 1 min | 305 | 5,1 | 12 | 120 | 0,00 % |
-| 25 | 5/s | 2 min | 1488 | 12,4 | 11 | 59 | 0,00 % |
-| 50 | 10/s | 3 min | 4402 | 24,5 | 10 | 120 | 0,02 % |
-| 100 | 20/s | 5 min | 14714 | 49,1 | 12 | 140 | 0,05 % |
-| 150 | 30/s | 5 min | 20777 | 69,3 | 23 | 290 | 0,13 % |
-| 200 | 50/s | 5 min | 24556 | 81,8 | 170 | 1100 | 0,25 % |
+| 10 | 2/s | 1 min | 160 | 4,8 | 11 | 170 | 0,00 % |
+| 25 | 5/s | 2 min | 1483 | 12,4 | 10 | 130 | 0,00 % |
+| 50 | 10/s | 3 min | 4411 | 24,5 | 11 | 250 | 0,05 % |
+| 100 | 20/s | 5 min | 14272 | 47,6 | 22 | 360 | 0,11 % |
+| 150 | 30/s | 5 min | 19371 | 64,6 | 190 | 1000 | 0,24 % |
+| 200 | 50/s | 5 min | 20117 | 67,1 | 730 | 1800 | 0,38 % |
 
-**Conclusiones principales**
+**Conclusiones**
 
-- El sistema escala de forma casi lineal hasta ~150 usuarios, con medianas por debajo de 25 ms.
-- Con **200 usuarios** la mediana se multiplica por 7 y el P95 supera 1 s: es el punto de saturación.
-- El cuello de botella es el **login** (mediana de 16 s con 200 usuarios) y el **registro** (~700 ms), probablemente por el coste del *hash* de contraseñas y el acceso a base de datos.
-- Los únicos errores son `400` en `/api/checkout`, causados por conflictos de stock entre usuarios concurrentes.
+- El sistema funciona de forma estable **hasta unos 50 usuarios concurrentes**, con medianas de unos 10 ms.
+- **Entre 100 y 150 usuarios el sistema se satura**: la mediana se multiplica por casi 9, el P95 llega a 1 s y el rendimiento deja de crecer (unas 65 peticiones/s).
+- Grafana muestra que el **cuello de botella es la CPU**, con picos por encima del 80-90 %. La memoria se mantiene estable.
+- Los únicos errores son respuestas `400` de `/api/checkout` al intentar pagar con el carrito vacío: es una validación correcta del backend, no un fallo.
+- Mejoras propuestas: optimizar consultas SQL, añadir caché y escalar horizontal o verticalmente.
+
+![Métricas de memoria, E/S y red en Grafana](img/grafana-recursos.png)
 
 ## Cómo ejecutarlo
 
@@ -58,4 +68,4 @@ locust -f locustfile.py --host http://<servidor>:5000 --headless -u 100 -r 20 -t
 
 ## Autores
 
-Trabajo en grupo (G02) de **Alfredo del Val** ([@Krazyfred](https://github.com/Krazyfred)) y compañeros.
+Grupo 02: **Alfredo del Val Ramos** ([@Krazyfred](https://github.com/Krazyfred)), Daniel García Salinas, Francisco Iván San Segundo Álvarez y Gabriel Ferrero Herrera.

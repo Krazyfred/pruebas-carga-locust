@@ -1,2 +1,2 @@
 Method,Name,Error,Occurrences
-POST,/api/checkout,CatchResponseError('Checkout POST failed with status 400'),1
+POST,/api/checkout,CatchResponseError('Checkout POST failed with status 400'),2
